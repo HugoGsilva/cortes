@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cortes</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 16px/1.4 system-ui, sans-serif; margin: 0 auto; max-width: 40rem; padding: 1.5rem; background: #14120e; color: #f4efe6; }
+    h1 { font-size: 1.4rem; margin: 0 0 0.4rem; }
+    p { color: #c9bfb0; }
+    label { display: block; margin: 0.8rem 0 0.3rem; }
+    input, button { font: inherit; }
+    input[type="password"], input[type="file"] { width: 100%; }
+    button { background: #e6c27a; color: #1a140c; border: 0; padding: 0.55rem 0.9rem; margin-top: 0.8rem; cursor: pointer; }
+    button:disabled { opacity: 0.5; }
+    article { border-top: 1px solid #3a342c; padding: 0.8rem 0; }
+    .err { color: #ffb4a8; }
+    a { color: #e6c27a; }
+  </style>
+</head>
+<body>
+  <h1>Cortes</h1>
+  <p>Um vídeo por vez. A VPS corta em janelas de cerca de 50 segundos, legenda em português e entrega o vertical.</p>
+  <label for="token">Token</label>
+  <input id="token" type="password" autocomplete="current-password">
+  <label for="file">Vídeo</label>
+  <input id="file" type="file" accept="video/*">
+  <button id="send" type="button">Enviar</button>
+  <p id="msg"></p>
+  <div id="list"></div>
+  <script>
+    const tokenInput = document.querySelector("#token");
+    const msg = document.querySelector("#msg");
+    tokenInput.value = sessionStorage.getItem("cortes-token") || "";
+    tokenInput.addEventListener("change", () => sessionStorage.setItem("cortes-token", tokenInput.value.trim()));
+
+    function headers() {
+      return { Authorization: "Bearer " + tokenInput.value.trim() };
+    }
+
+    async function api(path, options) {
+      const response = await fetch(path, { ...options, headers: { ...headers(), ...(options && options.headers) } });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || response.statusText);
+      }
+      return response.json();
+    }
+
+    async function download(path, name) {
+      const response = await fetch(path, { headers: headers() });
+      if (!response.ok) throw new Error("não baixou " + name);
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    function render(jobs) {
+      document.querySelector("#list").innerHTML = jobs.map((job) => {
+        const clips = [];
+        for (let i = 0; i < (job.clip_done || 0); i += 1) {
+          const n = String(i).padStart(3, "0");
+          clips.push(`<button type="button" data-dl="/jobs/${job.id}/clips/${i}/video" data-name="${n}.mp4">${n}.mp4</button>`);
+        }
+        return `<article><strong>${job.source_name || job.id}</strong><br>${job.status} ${job.clip_done || 0}/${job.clip_total || 0}${job.error ? `<div class="err">${job.error}</div>` : ""}<div>${clips.join(" ")}</div></article>`;
+      }).join("");
+    }
+
+    async function refresh() {
+      if (tokenInput.value.trim().length < 16) return;
+      try {
+        const data = await api("/jobs");
+        render(data.jobs);
+      } catch (error) {
+        msg.textContent = error.message;
+      }
+    }
+
+    document.querySelector("#send").addEventListener("click", async () => {
+      const file = document.querySelector("#file").files[0];
+      msg.textContent = "";
+      if (!file) { msg.textContent = "escolha um vídeo"; return; }
+      const body = new FormData();
+      body.append("file", file);
+      document.querySelector("#send").disabled = true;
+      try {
+        await api("/jobs", { method: "POST", body });
+        msg.textContent = "entrou na fila";
+        await refresh();
+      } catch (error) {
+        msg.textContent = error.message;
+      } finally {
+        document.querySelector("#send").disabled = false;
+      }
+    });
+
+    document.querySelector("#list").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-dl]");
+      if (!button) return;
+      download(button.dataset.dl, button.dataset.name).catch((error) => { msg.textContent = error.message; });
+    });
+
+    refresh();
+    setInterval(refresh, 4000);
+  </script>
+</body>
+</html>

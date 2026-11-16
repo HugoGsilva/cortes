@@ -1,0 +1,10 @@
+.git
+.github
+tests
+research_notes
+reports
+**/__pycache__
+*.pyc
+.data
+.env
+README.md
