@@ -178,7 +178,7 @@ def _process(store: Store, data_dir: Path, job_id: str) -> None:
                 lines = transcribe(wav)
             except Exception as exc:
                 print(f"[cortes] {job_id} clipe {index} sem legenda: {exc}", flush=True)
-                lines = []
+                raise RuntimeError(f"legenda falhou: {exc}") from exc
             finally:
                 wav.unlink(missing_ok=True)
             if lines:
